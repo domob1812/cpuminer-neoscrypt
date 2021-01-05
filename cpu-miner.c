@@ -110,6 +110,7 @@ enum algos {
 	ALGO_ALTSCRYPT,		/* Scrypt(1024, 1, 1) with Salsa20/8 through NeoScrypt */
 	ALGO_SCRYPT,		/* Scrypt(1024, 1, 1) with Salsa20/8 */
 	ALGO_SHA256D,		/* SHA-256d */
+        ALGO_NEOSCRYPT_XAYA,    /* NeoScrypt with Xaya's byte swapping */
 };
 
 static const char *algo_names[] = {
@@ -117,6 +118,7 @@ static const char *algo_names[] = {
 	[ALGO_ALTSCRYPT]	= "altscrypt",
 	[ALGO_SCRYPT]		= "scrypt",
 	[ALGO_SHA256D]		= "sha256d",
+        [ALGO_NEOSCRYPT_XAYA]   = "neoscrypt-xaya",
 };
 
 bool opt_debug = false;
@@ -181,7 +183,8 @@ static char const usage[] = "\
 Usage: " PROGRAM_NAME " [OPTIONS]\n\
 Options:\n\
   -a, --algo=ALGO       specify the algorithm to use\n\
-      neoscrypt  NeoScrypt(128, 2, 1) with Salsa20/20 and ChaCha20/20 (default)\n"
+      neoscrypt  NeoScrypt(128, 2, 1) with Salsa20/20 and ChaCha20/20 (default)\n\
+      neoscrypt-xaya NeoScrypt with Xaya byte swapping\n"
 #ifdef SHA256
 "\
       altscrypt  Scrypt(1024, 1, 1) with Salsa20/8 through NeoScrypt\n"
@@ -353,7 +356,7 @@ static bool jobj_binary(const json_t *obj, const char *key,
 static bool work_decode(const json_t *val, struct work *work) {
     uint data_size = 80, target_size = 32, i;
 
-    if(opt_algo != ALGO_NEOSCRYPT)
+    if(opt_algo != ALGO_NEOSCRYPT && opt_algo != ALGO_NEOSCRYPT_XAYA)
       data_size = 128;
 
     if(unlikely(!jobj_binary(val, "data", work->data, data_size))) {
@@ -765,7 +768,7 @@ static bool submit_upstream_work(CURL *curl, struct work *work)
     } else {
         uint data_size = 80;
 
-        if(opt_algo != ALGO_NEOSCRYPT)
+        if(opt_algo != ALGO_NEOSCRYPT && opt_algo != ALGO_NEOSCRYPT_XAYA)
           data_size = 128;
 
         uchar gw_str[2 * data_size + 1];
@@ -1356,7 +1359,7 @@ static void *miner_thread(void *userdata)
 #if defined(ASM) && defined(MINER_4WAY)
     const size_t align = 0x40;
     if(opt_neoscrypt_asm == 2) {
-        if(opt_algo == ALGO_NEOSCRYPT) {
+        if(opt_algo == ALGO_NEOSCRYPT || opt_algo == ALGO_NEOSCRYPT_XAYA) {
             scratchbuf = (uchar *) malloc(134464 + align);
         }
 #ifdef SHA256
@@ -1432,6 +1435,7 @@ static void *miner_thread(void *userdata)
                   switch(opt_algo) {
 
                     case(ALGO_NEOSCRYPT):
+                    case(ALGO_NEOSCRYPT_XAYA):
 #ifdef SHA256
                     case(ALGO_ALTSCRYPT):
 #endif
@@ -1461,6 +1465,7 @@ static void *miner_thread(void *userdata)
         switch(opt_algo) {
 
             case(ALGO_NEOSCRYPT):
+            case(ALGO_NEOSCRYPT_XAYA):
 #if defined(ASM) && defined(MINER_4WAY)
                 if(opt_neoscrypt_asm == 2)
                   rc = scanhash_neoscrypt_4way(thr_id, work.data, work.target,
@@ -1835,9 +1840,9 @@ static void parse_arg(int key, char *arg, char *pname)
         case('e'):
 #ifdef ASM
 #ifdef SHA256
-            if((opt_algo == ALGO_NEOSCRYPT) || (opt_algo == ALGO_ALTSCRYPT)) {
+            if((opt_algo == ALGO_NEOSCRYPT) || (opt_algo == ALGO_NEOSCRYPT_XAYA) || (opt_algo == ALGO_ALTSCRYPT)) {
 #else
-            if(opt_algo == ALGO_NEOSCRYPT) {
+            if(opt_algo == ALGO_NEOSCRYPT || opt_algo == ALGO_NEOSCRYPT_XAYA) {
 #endif /* SHA256 */
                 v = atoi(arg);
 #ifdef MINER_4WAY
@@ -1857,9 +1862,9 @@ static void parse_arg(int key, char *arg, char *pname)
 #ifndef ASM
             /* Nfactor is fixed in the NeoScrypt assembly code */
 #ifdef SHA256
-            if((opt_algo == ALGO_NEOSCRYPT) || (opt_algo == ALGO_ALTSCRYPT)) {
+            if((opt_algo == ALGO_NEOSCRYPT) || (opt_algo == ALGO_NEOSCRYPT_XAYA) || (opt_algo == ALGO_ALTSCRYPT)) {
 #else
-            if(opt_algo == ALGO_NEOSCRYPT) {
+            if(opt_algo == ALGO_NEOSCRYPT || opt_algo == ALGO_NEOSCRYPT_XAYA) {
 #endif /* SHA256 */
                 v = atoi(arg);
                 /* Nfactor = lb(N) - 1; N = (1 << (Nfactor + 1)) */
@@ -2178,9 +2183,9 @@ int main(int argc, char *argv[])
 	parse_cmdline(argc, argv);
 
 #ifdef SHA256
-    if((opt_algo == ALGO_NEOSCRYPT) || (opt_algo == ALGO_ALTSCRYPT)) {
+    if((opt_algo == ALGO_NEOSCRYPT) || (opt_algo == ALGO_NEOSCRYPT_XAYA) || (opt_algo == ALGO_ALTSCRYPT)) {
 #else
-    if(opt_algo == ALGO_NEOSCRYPT) {
+    if(opt_algo == ALGO_NEOSCRYPT || opt_algo == ALGO_NEOSCRYPT_XAYA) {
 #endif
 
         printf("Engines: ");
@@ -2200,7 +2205,7 @@ int main(int argc, char *argv[])
         printf("INT (enabled: INT)\n");
 #endif /* ASM */
 
-        if(opt_algo == ALGO_NEOSCRYPT) {
+        if(opt_algo == ALGO_NEOSCRYPT || opt_algo == ALGO_NEOSCRYPT_XAYA) {
             opt_neoscrypt_profile =
               0x80000020 | (opt_nfactor << 8) | ((opt_neoscrypt_asm & 0x1) << 12);
         }
